@@ -7,20 +7,19 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.telecom.TelecomManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
+import android.app.Activity;
 
 import org.json.JSONObject;
 
 import java.util.ArrayList;
 
-public final class MainActivity extends AppCompatActivity implements WatchBle.Listener {
+public final class MainActivity extends Activity implements WatchBle.Listener {
     private WebView web;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
@@ -37,6 +36,8 @@ public final class MainActivity extends AppCompatActivity implements WatchBle.Li
         web.addJavascriptInterface(new Bridge(), "AndroidBle");
         WatchBle.get(this).setListener(this);
         web.loadUrl("file:///android_asset/index.html");
+        SmsBridge.get().setEnabled(true);
+        requestSms();
         startForegroundService(new Intent(this, KeepAliveService.class));
     }
 
@@ -60,11 +61,11 @@ public final class MainActivity extends AppCompatActivity implements WatchBle.Li
 
         private void ok(int id, String data) {
             String q = (data == null ? "" : data).replace("\\", "\\\\").replace("'", "\\'");
-            web.evaluateJavascript("window.__ooNativeOk && window.__ooNativeOk(" + id + ",'" + q + "')", null);
+            runOnUiThread(() -> web.evaluateJavascript("window.__ooNativeOk && window.__ooNativeOk(" + id + ",'" + q + "')", null));
         }
         private void err(int id, String msg) {
             String q = (msg == null ? "error" : msg).replace("\\", "\\\\").replace("'", "\\'");
-            web.evaluateJavascript("window.__ooNativeErr && window.__ooNativeErr(" + id + ",'" + q + "')", null);
+            runOnUiThread(() -> web.evaluateJavascript("window.__ooNativeErr && window.__ooNativeErr(" + id + ",'" + q + "')", null));
         }
 
         private void dispatch(String method, int id, String arg) {
@@ -105,7 +106,7 @@ public final class MainActivity extends AppCompatActivity implements WatchBle.Li
                         err(id, e.getMessage());
                     }
                 }
-                case "callAction" -> ok(id, "call " + arg);
+                case "callAction" -> ok(id, answerOrEnd("1".equals(arg.trim())));
                 default -> err(id, "unknown " + method);
             }
         }
@@ -117,6 +118,8 @@ public final class MainActivity extends AppCompatActivity implements WatchBle.Li
                 Manifest.permission.SEND_SMS,
                 Manifest.permission.RECEIVE_SMS,
                 Manifest.permission.READ_SMS,
+                Manifest.permission.READ_PHONE_STATE,
+                Manifest.permission.ANSWER_PHONE_CALLS,
                 Manifest.permission.BLUETOOTH_CONNECT,
                 Manifest.permission.BLUETOOTH_SCAN
         };
@@ -125,16 +128,44 @@ public final class MainActivity extends AppCompatActivity implements WatchBle.Li
                     Manifest.permission.SEND_SMS,
                     Manifest.permission.RECEIVE_SMS,
                     Manifest.permission.READ_SMS,
+                    Manifest.permission.READ_PHONE_STATE,
+                    Manifest.permission.ANSWER_PHONE_CALLS,
                     Manifest.permission.BLUETOOTH_CONNECT,
                     Manifest.permission.BLUETOOTH_SCAN,
                     Manifest.permission.POST_NOTIFICATIONS
             };
         }
         for (String p : perms) {
-            if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) need.add(p);
+            if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) need.add(p);
         }
         if (!need.isEmpty()) {
-            ActivityCompat.requestPermissions(this, need.toArray(new String[0]), 7);
+            requestPermissions(need.toArray(new String[0]), 7);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(code, permissions, results);
+        startService(new Intent(this, KeepAliveService.class));
+    }
+
+    @SuppressWarnings("deprecation")
+    private String answerOrEnd(boolean answer) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ANSWER_PHONE_CALLS) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[] { Manifest.permission.ANSWER_PHONE_CALLS }, 8);
+            return "allow answer-calls, then tap the watch again";
+        }
+        TelecomManager tm = (TelecomManager) getSystemService(TELECOM_SERVICE);
+        if (tm == null) return "no phone service";
+        try {
+            if (answer) {
+                tm.acceptRingingCall();
+                return "answered";
+            }
+            boolean ended = tm.endCall();
+            return ended ? "ended" : "could not end the call";
+        } catch (SecurityException e) {
+            return e.getMessage() == null ? "call permission denied" : e.getMessage();
         }
     }
 }

@@ -151,8 +151,8 @@ public final class MainActivity extends Activity implements WatchBle.Listener {
 
     @SuppressWarnings("deprecation")
     private String answerOrEnd(boolean answer) {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ANSWER_PHONE_CALLS) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[] { Manifest.permission.ANSWER_PHONE_CALLS }, 8);
+        if (checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] { Manifest.permission.ANSWER_PHONE_CALLS }, 8);
             return "allow answer-calls, then tap the watch again";
         }
         TelecomManager tm = (TelecomManager) getSystemService(TELECOM_SERVICE);

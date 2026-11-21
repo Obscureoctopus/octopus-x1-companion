@@ -101,10 +101,17 @@ window.addEventListener("beforeinstallprompt", (e) => {
 </div>
 
 <div class="card">
-  <b>Messages</b>
-  <input id="from" placeholder="App / sender (e.g. Mom)">
+  <b>Texts (phone SMS)</b>
+  <p>Other watches do this with a background phone service. This app reads incoming SMS and notifications, writes them to the watch over BLE, and sends your wrist quick-replies as real SMS.</p>
+  <div id="sms-st" style="margin-top:6px;font-size:12px;color:var(--dim)">SMS bridge off — use the Android app, Connect, then allow SMS + notification access</div>
+  <div class="row">
+    <button class="go alt" id="sms-enable-btn">Enable SMS bridge</button>
+    <button class="go" id="notif-enable-btn">Notification access</button>
+  </div>
+  <input id="from" placeholder="App / sender (optional manual push)">
   <input id="text" placeholder="Notification text">
   <button class="go" onclick="pushMsg()">Push to watch</button>
+  <div class="log" id="smslog" style="margin-top:8px">[sms] waiting for phone SMS / watch reply</div>
 </div>
 
 <div class="card">
@@ -290,6 +297,21 @@ window.__ooNativeErr = (id, msg) => {
 function onWatchBytes(d) {
   const text = new TextDecoder().decode(d);
   log('rx', '[rx] ' + [...d].map(x => x.toString(16).padStart(2,'0')).join(' ') + ' ' + text);
+  if (d[0] === 1) {
+    const [from, body] = split0(d.slice(1));
+    const reply = (body || from || '').trim();
+    const dest = (body ? from : '').trim();
+    log('smslog', `[watch reply] ${dest || 'last SMS'} → ${reply}`);
+    if (NATIVE && reply) {
+      nativeInvoke('smsReply', JSON.stringify({ from: dest, text: reply }))
+        .then(() => log('smslog', '[sms] sent from watch'))
+        .catch(e => log('smslog', '[sms] ' + e.message));
+    }
+  }
+  if (d[0] === 2) {
+    log('smslog', d[1] ? '[call] answer' : '[call] decline');
+    if (NATIVE) nativeInvoke('callAction', String(d[1] || 0)).catch(() => {});
+  }
   if (d[0] === 11) {
     const s = new TextDecoder().decode(d.slice(1));
     fwlog('[ota] ' + s);
@@ -301,6 +323,11 @@ function onWatchBytes(d) {
 window.__ooNativeNotify = (b64) => {
   const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   onWatchBytes(bin);
+};
+window.__ooNativeSms = (s) => {
+  try { log('smslog', s); } catch (e) {}
+  const el = document.getElementById('sms-st');
+  if (el && /bridge|sms|notif/i.test(s)) el.textContent = s;
 };
 function nativeChar(name) {
   return {
@@ -324,6 +351,14 @@ document.getElementById('connect').onclick = async () => {
       alertChr = nativeChar('alert');
       st('connected via phone Bluetooth');
       log('flashlog', '[ble] native link up');
+      try {
+        const sms = await nativeInvoke('enableSms');
+        document.getElementById('sms-st').textContent = sms || 'SMS bridge on';
+        log('smslog', '[sms] ' + (sms || 'bridge on'));
+      } catch (e) {
+        document.getElementById('sms-st').textContent = e.message;
+        log('smslog', '[sms] ' + e.message);
+      }
       await syncTime();
       return;
     }
@@ -496,13 +531,39 @@ async function purge(i) {
   renderMods();
 }
 
+document.getElementById('sms-enable-btn').onclick = async () => {
+  if (!NATIVE) {
+    document.getElementById('sms-st').textContent = 'Install the Android app. A browser cannot send SMS.';
+    return;
+  }
+  try {
+    const s = await nativeInvoke('enableSms');
+    document.getElementById('sms-st').textContent = s || 'SMS bridge on';
+    log('smslog', '[sms] ' + (s || 'bridge on'));
+  } catch (e) {
+    document.getElementById('sms-st').textContent = e.message;
+  }
+};
+document.getElementById('notif-enable-btn').onclick = async () => {
+  if (!NATIVE) {
+    document.getElementById('sms-st').textContent = 'Install the Android app, then grant notification access';
+    return;
+  }
+  try {
+    const s = await nativeInvoke('enableNotifs');
+    document.getElementById('sms-st').textContent = s || 'open notification access';
+  } catch (e) {
+    document.getElementById('sms-st').textContent = e.message;
+  }
+};
+
 (function () {
   const card = document.getElementById("install-card");
   const hint = document.getElementById("install-hint");
   const stEl = document.getElementById("install-st");
   if (!card) return;
   if (typeof AndroidBle !== "undefined") {
-    card.innerHTML = "<b>Phone Bluetooth</b><p>This Android app talks to the watch over the S25 FE radio. Chrome is not used.</p>";
+    card.innerHTML = "<b>Phone Bluetooth</b><p>This Android app talks to the watch over the phone radio. Chrome is not used. Connect, then enable SMS + notification access so Texts actually send and receive.</p>";
     return;
   }
   if ("serviceWorker" in navigator) {

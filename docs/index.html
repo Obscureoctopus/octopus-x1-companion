@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OCTOPUS companion</title>
+<meta name="theme-color" content="#0a0e14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/png" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<script>
+window.__ooDeferredInstall = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  window.__ooDeferredInstall = e;
+  window.dispatchEvent(new Event("oo-can-install"));
+});
+</script>
+<style>
+  :root { --bg:#0a0e14; --panel:#121826; --card:#1a2234; --accent:#00e5a0; --accent2:#4da3ff; --danger:#ff4d6d; --warn:#ffc857; --text:#e8edf5; --dim:#8b95a8; }
+  * { box-sizing:border-box; font-family:system-ui,sans-serif; }
+  body { margin:0; background:var(--bg); color:var(--text); padding:18px; max-width:520px; margin:0 auto; }
+  h1 { font-size:18px; letter-spacing:2px; }
+  h2 { font-size:12px; color:var(--dim); text-transform:uppercase; letter-spacing:1.4px; }
+  .pill { font-size:10px; background:rgba(0,229,160,.15); color:var(--accent); border-radius:20px; padding:2px 9px; }
+  .card { background:var(--card); border:1px solid #232d45; border-radius:12px; padding:14px; margin:12px 0; font-size:13px; }
+  .card p { color:var(--dim); font-size:12px; margin:4px 0 0; line-height:1.5; }
+  input,select { width:100%; background:#0d1320; border:1px solid #2a3450; border-radius:8px; color:var(--text); padding:8px 10px; font-size:13px; margin:0 0 8px; }
+  button.go { background:var(--accent); color:#04140d; border:0; border-radius:8px; padding:9px 16px; font-weight:700; width:100%; cursor:pointer; }
+  button.alt { background:var(--accent2); color:#04121f; }
+  button.bad { background:var(--danger); color:#fff; }
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  .log { font-family:monospace; font-size:11px; color:var(--accent); background:#05080f; border-radius:10px; padding:12px; max-height:140px; overflow:auto; line-height:1.7; }
+  .mod-item { display:flex; align-items:center; gap:10px; background:#0d1320; border:1px solid #2a3450; border-radius:10px; padding:8px 10px; margin-bottom:6px; }
+  .mod-item button { margin-left:auto; background:transparent; border:1px solid var(--danger); color:var(--danger); border-radius:6px; padding:2px 8px; }
+  .bar { height:8px; background:#0d1320; border-radius:6px; margin:10px 0 0; overflow:hidden; border:1px solid #2a3450; }
+  .bar > div { height:100%; width:0; background:var(--accent); }
+  button.go:disabled { opacity:.45; cursor:not-allowed; }
+</style>
+</head>
+<body>
+<div class="brand" style="display:flex;align-items:center;gap:10px">
+  <div style="width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)"></div>
+  <h1>OCTOPUS OS</h1><span class="pill">watch 2.5.0 / X-1</span>
+</div>
+<p style="color:var(--dim);font-size:12px">Phone companion for the Waveshare S3 watch. Pair over Bluetooth, then the watch pulls firmware from this site over WiFi. Watch advertises as InfiniTime or OCTOPUS-X1.</p>
+
+<div class="card" id="install-card">
+  <b>Install on this phone</b>
+  <p id="install-hint">Samsung Internet and Firefox cannot talk to the watch. Install the Android app so Connect uses the phone Bluetooth radio.</p>
+  <a class="go" id="install-btn" href="/app/octopus-watch.apk" style="display:block;text-align:center;text-decoration:none">Download Android app</a>
+  <div id="install-st" style="margin-top:8px;font-size:12px;color:var(--dim)">Uses the S25 FE Bluetooth stack. Chrome is not required.</div>
+</div>
+
+<div class="card">
+  <button class="go" id="connect">Connect watch</button>
+  <div id="st" style="margin-top:8px;font-size:12px;color:var(--dim)">disconnected</div>
+</div>
+
+<div class="card">
+  <b>Flash firmware</b>
+  <p>From this phone. Connect the watch, save WiFi, then update. The watch downloads Octopus OS 2.5.0 from this site and writes it itself.</p>
+  <input id="fw-ssid" placeholder="WiFi name">
+  <input id="fw-pass" placeholder="WiFi password" type="password">
+  <div class="row">
+    <button class="go alt" id="wifi-btn">Save WiFi</button>
+    <button class="go" id="flash-btn">Update watch</button>
+  </div>
+  <div class="bar"><div id="flash-bar-fill"></div></div>
+  <div class="log" id="fwlog" style="margin-top:8px">[fw] idle — connect the watch, then update</div>
+  <details style="margin-top:12px;color:var(--dim);font-size:12px">
+    <summary style="cursor:pointer">Blank board? USB from a computer</summary>
+    <p>Only for a watch that cannot boot this firmware yet. Chrome or Edge on a computer, USB JTAG <code>303a:1001</code>. Hold BOOT if the port picker is empty.</p>
+    <button class="go alt" id="usb-flash-btn">USB flash Octopus OS 2.5.0</button>
+  </details>
+</div>
+
+<div class="card">
+  <b>Mod Injector</b>
+  <p>Flash custom modules into the watch firmware. Anything you inject lands on the watch instantly.</p>
+  <input id="m-name" placeholder="Module name (e.g. Crypto Ticker)">
+  <input id="m-icon" placeholder="Icon / short label (e.g. BTC)">
+  <select id="m-type">
+    <option value="0">Info widget (shows live text)</option>
+    <option value="1">Action button (runs a script)</option>
+    <option value="2">AI prompt (asks the assistant)</option>
+  </select>
+  <input id="m-payload" placeholder="Payload: message / script / prompt">
+  <button class="go" onclick="inject()">Inject into firmware</button>
+  <div id="mod-list" style="margin-top:10px"><span style="color:var(--dim)">No mods yet. Firmware is stock and boring.</span></div>
+  <div class="log" id="flashlog" style="margin-top:8px">[boot] octopus-os v2.5 ready</div>
+</div>
+
+<div class="card">
+  <b>Time</b>
+  <button class="go alt" onclick="syncTime()">Push phone time</button>
+</div>
+
+<div class="card">
+  <b>Messages</b>
+  <input id="from" placeholder="App / sender (e.g. Mom)">
+  <input id="text" placeholder="Notification text">
+  <button class="go" onclick="pushMsg()">Push to watch</button>
+</div>
+
+<div class="card">
+  <b>Calls</b>
+  <input id="caller" placeholder="Caller name" value="Dad">
+  <div class="row">
+    <button class="go alt" onclick="ring(true)">Ring watch</button>
+    <button class="go bad" onclick="ring(false)">End</button>
+  </div>
+</div>
+
+<div class="card">
+  <b>Vitals</b>
+  <div class="row">
+    <input id="hr" placeholder="HR" value="72">
+    <input id="spo2" placeholder="SpO2" value="98">
+  </div>
+  <div class="row">
+    <input id="temp" placeholder="temp C" value="33.6">
+    <input id="stress" placeholder="stress" value="31">
+  </div>
+  <button class="go alt" onclick="pushVitals()">Send vitals</button>
+</div>
+
+<div class="card">
+  <b>Nav / Music / AI</b>
+  <input id="navdist" placeholder="Distance" value="200 ft">
+  <input id="navtext" placeholder="Turn instruction" value="Turn right on Main">
+  <div class="row">
+    <button class="go alt" onclick="nav(0)">Right</button>
+    <button class="go alt" onclick="nav(1)">Left</button>
+    <button class="go bad" onclick="navOff()">Stop</button>
+  </div>
+  <input id="title" placeholder="Track" value="Kraken Bass">
+  <input id="artist" placeholder="Artist" value="Octopus Dub">
+  <button class="go" onclick="media()">Now playing</button>
+  <input id="you" placeholder="You said">
+  <input id="ai" placeholder="AI reply">
+  <button class="go alt" onclick="pushAI()">Push AI lines</button>
+</div>
+
+<div class="card">
+  <b>AI voice (WiFi)</b>
+  <p>ssid|password|ws://host:8765/ws — watch holds to talk after this.</p>
+  <input id="cfg" placeholder="homewifi|secret|ws://192.168.1.10:8765/ws">
+  <button class="go" onclick="cfgWifi()">Write AI config</button>
+</div>
+
+<div class="card"><b>Watch → phone</b><div class="log" id="rx">[rx] idle</div></div>
+
+<p style="margin:36px 0 12px;font-size:12px;color:var(--dim);border-top:1px solid #232d45;padding-top:14px">
+  <a href="https://obscureoctopus.com/hardware" style="color:var(--dim)">Hardware</a> ·
+  <a href="https://obscureoctopus.com/guides" style="color:var(--dim)">Guides</a> ·
+  <a href="/privacy" style="color:var(--dim)">Privacy</a>
+</p>
+
+<script>
+const SVC = 'a1000000-5333-5741-5443-484553570001';
+const CFG = 'a1000000-5333-5741-5443-484553570002';
+const PHONE = 'a1000000-5333-5741-5443-484553570004';
+const WATCH = 'a1000000-5333-5741-5443-484553570005';
+const CTS = '00001805-0000-1000-8000-00805f9b34fb';
+const CTS_CHR = '00002a2b-0000-1000-8000-00805f9b34fb';
+const ANS = '00001811-0000-1000-8000-00805f9b34fb';
+const ANS_CHR = '00002a46-0000-1000-8000-00805f9b34fb';
+const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+let nusRx = null;
+let linkMode = 'none';
+
+function split0(u) {
+  const i = u.indexOf(0);
+  if (i < 0) return [new TextDecoder().decode(u), ''];
+  return [new TextDecoder().decode(u.slice(0, i)), new TextDecoder().decode(u.slice(i + 1))];
+}
+async function nusWrite(obj) {
+  if (!nusRx) throw new Error('not connected');
+  const bytes = enc.encode(JSON.stringify(obj) + '\n');
+  try { await nusRx.writeValueWithoutResponse(bytes); }
+  catch (e) { await nusRx.writeValue(bytes); }
+}
+function wrapNusPhone() {
+  return {
+    async writeValueWithoutResponse(data) {
+      const u = data instanceof Uint8Array ? data : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      const op = u[0];
+      if (op === 1) {
+        const [from, text] = split0(u.slice(1));
+        await nusWrite({ t: 'notify', f: from, m: text });
+      } else if (op === 2) {
+        if (u[1]) await nusWrite({ t: 'call', f: new TextDecoder().decode(u.slice(2)) });
+        else await nusWrite({ t: 'hang' });
+      } else if (op === 3) {
+        const left = u[1];
+        const [dist, text] = split0(u.slice(2));
+        await nusWrite({ t: 'nav', m: (left ? 'L ' : 'R ') + text + ' ' + dist });
+      } else if (op === 4) {
+        const [title, artist] = split0(u.slice(2));
+        await nusWrite({ t: 'media', p: u[1] ? 1 : 0, n: title || artist });
+      } else if (op === 5) {
+        await nusWrite({ t: 'notify', f: 'vitals', m: 'HR ' + u[1] });
+      } else if (op === 6) {
+        await nusWrite({ t: 'nav', m: 'stop' });
+      } else if (op === 7) {
+        const [you, ai] = split0(u.slice(1));
+        await nusWrite({ t: 'notify', f: 'AI', m: (ai || you || '').slice(0, 80) });
+      } else if (op === 8) {
+        const [name, payload] = split0(u.slice(2));
+        await nusWrite({ t: 'mod', n: name, m: (payload || name).slice(0, 32) });
+      } else if (op === 11) {
+        await nusWrite({ t: 'notify', f: 'OTA', m: 'need Octopus OS 2.5 for WiFi OTA' });
+      }
+    }
+  };
+}
+function wrapNusCfg() {
+  return {
+    async writeValueWithoutResponse(data) {
+      const u = data instanceof Uint8Array ? data : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      const s = new TextDecoder().decode(u);
+      await nusWrite({ t: 'mod', n: 'wifi', m: s.slice(0, 32) });
+    }
+  };
+}
+function wrapNusTime() {
+  return {
+    async writeValueWithoutResponse(data) {
+      const b = data instanceof Uint8Array ? data : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      await nusWrite({ t: 'time', Y: b[0] | (b[1] << 8), M: b[2], D: b[3], h: b[4], m: b[5], s: b[6], w: b[7] });
+    }
+  };
+}
+
+let phoneChr, cfgChr, timeChr, alertChr, mods = [];
+const enc = new TextEncoder();
+
+function log(id, s) {
+  const el = document.getElementById(id);
+  el.innerHTML += '<br>' + s;
+  el.scrollTop = el.scrollHeight;
+}
+function fwlog(s) {
+  const el = document.getElementById('fwlog');
+  el.innerHTML += '<br>' + s;
+  el.scrollTop = el.scrollHeight;
+}
+function bar(pct) {
+  document.getElementById('flash-bar-fill').style.width = Math.max(0, Math.min(100, pct)) + '%';
+}
+function st(s) { document.getElementById('st').textContent = s; }
+function u8(...parts) {
+  const chunks = parts.map(p => typeof p === 'number' ? Uint8Array.of(p) : p instanceof Uint8Array ? p : enc.encode(p));
+  const n = chunks.reduce((a,c)=>a+c.length,0);
+  const o = new Uint8Array(n);
+  let i = 0;
+  for (const c of chunks) { o.set(c, i); i += c.length; }
+  return o;
+}
+async function w(chr, data) {
+  if (!chr) throw new Error('not connected');
+  await chr.writeValueWithoutResponse(data);
+}
+
+const NATIVE = typeof AndroidBle !== 'undefined';
+let nativeSeq = 0;
+const nativePending = {};
+function nativeInvoke(method, arg) {
+  return new Promise((resolve, reject) => {
+    const id = ++nativeSeq;
+    nativePending[id] = { resolve, reject };
+    AndroidBle.invoke(method, id, arg || '');
+  });
+}
+window.__ooNativeOk = (id, data) => {
+  const p = nativePending[id]; if (!p) return;
+  delete nativePending[id]; p.resolve(data);
+};
+window.__ooNativeErr = (id, msg) => {
+  const p = nativePending[id]; if (!p) return;
+  delete nativePending[id]; p.reject(new Error(msg || 'native ble error'));
+};
+function onWatchBytes(d) {
+  const text = new TextDecoder().decode(d);
+  log('rx', '[rx] ' + [...d].map(x => x.toString(16).padStart(2,'0')).join(' ') + ' ' + text);
+  if (d[0] === 11) {
+    const s = new TextDecoder().decode(d.slice(1));
+    fwlog('[ota] ' + s);
+    const m = s.match(/(\d+)%/);
+    if (m) bar(+m[1]);
+    if (/rebooting/i.test(s)) bar(100);
+  }
+}
+window.__ooNativeNotify = (b64) => {
+  const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  onWatchBytes(bin);
+};
+function nativeChar(name) {
+  return {
+    writeValueWithoutResponse(data) {
+      const u = data instanceof Uint8Array ? data : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      let s = '';
+      for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]);
+      return nativeInvoke('write', JSON.stringify({ ch: name, data: btoa(s) }));
+    }
+  };
+}
+
+document.getElementById('connect').onclick = async () => {
+  try {
+    if (NATIVE) {
+      st('scanning phone Bluetooth…');
+      await nativeInvoke('connect');
+      phoneChr = nativeChar('phone');
+      cfgChr = nativeChar('cfg');
+      timeChr = nativeChar('time');
+      alertChr = nativeChar('alert');
+      st('connected via phone Bluetooth');
+      log('flashlog', '[ble] native link up');
+      await syncTime();
+      return;
+    }
+    if (!navigator.bluetooth) {
+      st('this browser has no Web Bluetooth — install the Android app');
+      return;
+    }
+    const dev = await navigator.bluetooth.requestDevice({
+      filters: [
+        { name: 'InfiniTime' },
+        { name: 'OCTOPUS-X1' },
+        { namePrefix: 'OCTOPUS' },
+        { namePrefix: 'Infini' }
+      ],
+      optionalServices: [SVC, CTS, ANS, NUS],
+    });
+    const server = await dev.gatt.connect();
+    let usedNus = false;
+    try {
+      const nsvc = await server.getPrimaryService(NUS);
+      nusRx = await nsvc.getCharacteristic(NUS_RX);
+      const ntx = await nsvc.getCharacteristic(NUS_TX);
+      await ntx.startNotifications();
+      ntx.addEventListener('characteristicvaluechanged', ev => {
+        onWatchBytes(new Uint8Array(ev.target.value.buffer));
+      });
+      phoneChr = wrapNusPhone();
+      cfgChr = wrapNusCfg();
+      timeChr = wrapNusTime();
+      alertChr = null;
+      usedNus = true;
+      linkMode = 'nus';
+      log('flashlog', '[ble] OCTOPUS-X1 NUS link');
+    } catch (e) {
+      usedNus = false;
+    }
+    if (!usedNus) {
+      const svc = await server.getPrimaryService(SVC);
+      phoneChr = await svc.getCharacteristic(PHONE);
+      cfgChr = await svc.getCharacteristic(CFG);
+      const watchChr = await svc.getCharacteristic(WATCH);
+      await watchChr.startNotifications();
+      watchChr.addEventListener('characteristicvaluechanged', ev => {
+        onWatchBytes(new Uint8Array(ev.target.value.buffer));
+      });
+      try {
+        const ts = await server.getPrimaryService(CTS);
+        timeChr = await ts.getCharacteristic(CTS_CHR);
+      } catch (e) { timeChr = null; }
+      try {
+        const as = await server.getPrimaryService(ANS);
+        alertChr = await as.getCharacteristic(ANS_CHR);
+      } catch (e) { alertChr = null; }
+      linkMode = 'infinitime';
+      log('flashlog', '[ble] InfiniTime link');
+    }
+    st('connected to ' + (dev.name || 'watch'));
+    log('flashlog', '[ble] link up');
+    await syncTime();
+  } catch (e) { st(e.message); }
+};
+
+async function syncTime() {
+  if (!timeChr) { st('no time characteristic'); return; }
+  const n = new Date();
+  const b = new Uint8Array(10);
+  const y = n.getFullYear();
+  b[0] = y & 255; b[1] = y >> 8;
+  b[2] = n.getMonth()+1; b[3] = n.getDate();
+  b[4] = n.getHours(); b[5] = n.getMinutes(); b[6] = n.getSeconds();
+  b[7] = n.getDay();
+  await timeChr.writeValueWithoutResponse(b);
+  log('flashlog', '[time] pushed ' + n.toLocaleString());
+}
+
+async function pushMsg() {
+  const from = document.getElementById('from').value.trim() || 'Unknown';
+  const text = document.getElementById('text').value.trim() || 'You up?';
+  await w(phoneChr, u8(1, from, 0, text));
+  log('flashlog', `[notify] ${from}: ${text}`);
+}
+
+async function ring(on) {
+  const name = document.getElementById('caller').value.trim() || 'Dad';
+  await w(phoneChr, u8(2, on ? 1 : 0, name));
+  log('flashlog', on ? '[call] ringing ' + name : '[call] end');
+}
+
+async function pushVitals() {
+  const hr = +document.getElementById('hr').value || 72;
+  const spo2 = +document.getElementById('spo2').value || 98;
+  const t = Math.round(parseFloat(document.getElementById('temp').value || '33.6') * 10);
+  const stv = +document.getElementById('stress').value || 31;
+  await w(phoneChr, Uint8Array.of(5, hr & 255, spo2 & 255, t & 255, (t >> 8) & 255, stv & 255));
+  log('flashlog', '[vitals] hr ' + hr);
+}
+
+async function nav(left) {
+  await w(phoneChr, u8(3, left, document.getElementById('navdist').value, 0, document.getElementById('navtext').value));
+}
+async function navOff() { await w(phoneChr, Uint8Array.of(6)); }
+async function media() {
+  await w(phoneChr, u8(4, 1, document.getElementById('title').value, 0, document.getElementById('artist').value));
+}
+async function pushAI() {
+  await w(phoneChr, u8(7, document.getElementById('you').value, 0, document.getElementById('ai').value));
+}
+async function cfgWifi() {
+  await w(cfgChr, enc.encode(document.getElementById('cfg').value));
+  log('flashlog', '[ai] config written');
+}
+
+const OTA_URL = 'https://obscureoctopus.tech/firmware/octopus-tactical.bin';
+
+document.getElementById('wifi-btn').onclick = async () => {
+  try {
+    const ssid = document.getElementById('fw-ssid').value.trim();
+    const pass = document.getElementById('fw-pass').value;
+    if (!ssid) { fwlog('[err] WiFi name is empty'); return; }
+    const extra = document.getElementById('cfg').value.trim();
+    const parts = extra.split('|');
+    const uri = parts.length >= 3 ? parts.slice(2).join('|') : '';
+    await w(cfgChr, enc.encode(ssid + '|' + pass + '|' + uri));
+    fwlog('[fw] WiFi saved on watch: ' + ssid);
+  } catch (e) { fwlog('[err] ' + e.message); }
+};
+
+document.getElementById('flash-btn').onclick = async () => {
+  try {
+    bar(0);
+    const ssid = document.getElementById('fw-ssid').value.trim();
+    if (ssid) {
+      const extra = document.getElementById('cfg').value.trim();
+      const parts = extra.split('|');
+      const uri = parts.length >= 3 ? parts.slice(2).join('|') : '';
+      await w(cfgChr, enc.encode(ssid + '|' + document.getElementById('fw-pass').value + '|' + uri));
+      fwlog('[fw] WiFi saved: ' + ssid);
+    }
+    fwlog('[fw] telling watch to pull Octopus OS 2.5.0…');
+    await w(phoneChr, u8(11, OTA_URL));
+    fwlog('[fw] watch is downloading over WiFi. Keep this page open.');
+  } catch (e) { fwlog('[err] ' + ((e && e.message) ? e.message : e)); }
+};
+
+function renderMods() {
+  const el = document.getElementById('mod-list');
+  el.innerHTML = mods.length
+    ? mods.map((m,i) => `<div class="mod-item"><span>${m.name}</span><span class="pill">${['info','action','ai'][m.type]}</span><button onclick="purge(${i})">purge</button></div>`).join('')
+    : '<span style="color:var(--dim)">No mods yet. Firmware is stock and boring.</span>';
+}
+
+async function inject() {
+  const name = (document.getElementById('m-icon').value.trim() || document.getElementById('m-name').value.trim());
+  const payload = document.getElementById('m-payload').value.trim();
+  const type = +document.getElementById('m-type').value;
+  const full = document.getElementById('m-name').value.trim() || name;
+  if (!full) { log('flashlog', '[err] module needs a name'); return; }
+  await w(phoneChr, u8(8, type, full, 0, payload));
+  mods.push({name: full, type, payload});
+  document.getElementById('m-name').value = '';
+  document.getElementById('m-payload').value = '';
+  log('flashlog', `[flash] injected "${full}" (${['info','action','ai'][type]}) @0x${(0x8000+mods.length*256).toString(16)} — OK`);
+  renderMods();
+}
+
+async function purge(i) {
+  await w(phoneChr, Uint8Array.of(9, i));
+  log('flashlog', `[flash] purged "${mods[i].name}"`);
+  mods.splice(i,1);
+  renderMods();
+}
+
+(function () {
+  const card = document.getElementById("install-card");
+  const hint = document.getElementById("install-hint");
+  const stEl = document.getElementById("install-st");
+  if (!card) return;
+  if (typeof AndroidBle !== "undefined") {
+    card.innerHTML = "<b>Phone Bluetooth</b><p>This Android app talks to the watch over the S25 FE radio. Chrome is not used.</p>";
+    return;
+  }
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+  }
+  if (stEl) stEl.textContent = "Allow unknown apps, then open the APK. Connect watch uses phone BLE.";
+  if (hint) hint.textContent = "Samsung Internet cannot do watch BLE. Install the Android app.";
+})();
+</script>
+<script type="module">
+import { ESPLoader, Transport, ESPRESSIF_VID, USB_JTAG_SERIAL_PID } from "https://unpkg.com/esptool-js@0.7.1/bundle.js";
+
+const PARTS = [
+  { url: "./firmware/bootloader.bin", address: 0x0, name: "bootloader" },
+  { url: "./firmware/partition-table.bin", address: 0x8000, name: "partitions" },
+  { url: "./firmware/ota-data.bin", address: 0xd000, name: "otadata" },
+  { url: "./firmware/octopus-tactical.bin", address: 0x10000, name: "app" },
+];
+
+const fwlog = (s) => window.fwlog(s);
+const bar = (pct) => window.bar(pct);
+const btn = document.getElementById("usb-flash-btn");
+if (!("serial" in navigator) && btn) {
+  btn.disabled = true;
+  btn.textContent = "USB flash needs a computer browser";
+}
+
+btn.addEventListener("click", async () => {
+  btn.disabled = true;
+  bar(0);
+  let transport;
+  try {
+    fwlog("[usb] pick the USB JTAG port…");
+    const port = await navigator.serial.requestPort({
+      filters: [{ usbVendorId: ESPRESSIF_VID, usbProductId: USB_JTAG_SERIAL_PID }],
+    });
+    fwlog("[usb] downloading Octopus OS 2.5.0…");
+    const fileArray = [];
+    for (let i = 0; i < PARTS.length; i++) {
+      const p = PARTS[i];
+      const res = await fetch(p.url);
+      if (!res.ok) throw new Error("download " + p.name + " failed (" + res.status + ")");
+      const data = new Uint8Array(await res.arrayBuffer());
+      fileArray.push({ data, address: p.address });
+      fwlog("[fw] " + p.name + " " + data.length + " bytes @ 0x" + p.address.toString(16));
+      bar(4 + ((i + 1) / PARTS.length) * 12);
+    }
+    transport = new Transport(port, false);
+    const loader = new ESPLoader({
+      transport,
+      baudrate: 921600,
+      romBaudrate: 115200,
+      terminal: {
+        clean() {},
+        writeLine(d) { fwlog("[esp] " + d); },
+        write(d) { fwlog("[esp] " + d); },
+      },
+    });
+    fwlog("[fw] connecting to ESP32-S3…");
+    const chip = await loader.main("default_reset");
+    fwlog("[fw] chip " + chip);
+    await loader.writeFlash({
+      fileArray,
+      flashSize: "16MB",
+      flashMode: "dio",
+      flashFreq: "80m",
+      eraseAll: false,
+      compress: true,
+      reportProgress(fileIndex, written, total) {
+        const name = PARTS[fileIndex] ? PARTS[fileIndex].name : String(fileIndex);
+        bar(16 + (written / Math.max(total, 1)) * 80);
+        if (written === total) fwlog("[fw] wrote " + name);
+      },
+    });
+    fwlog("[fw] resetting…");
+    await loader.after("hard_reset");
+    try { await transport.disconnect(); } catch (e) {}
+    bar(100);
+    fwlog("[usb] done. Watch should boot Octopus OS 2.5.0.");
+  } catch (e) {
+    fwlog("[err] " + ((e && e.message) ? e.message : e));
+    try { if (transport) await transport.disconnect(); } catch (x) {}
+  }
+  btn.disabled = false;
+});
+</script>
+</body>
+</html>

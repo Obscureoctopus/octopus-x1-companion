@@ -4,8 +4,8 @@ on:
   push:
     paths:
       - 'android/**'
-      - 'app/**'
       - '.github/workflows/android.yml'
+      - 'index.html'
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -15,14 +15,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - name: Build
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Build release APK
         working-directory: android
-        run: |
-          if [ -d app ]; then cd .; fi
-          gradle :app:assembleRelease --no-daemon
-        env:
-          GRADLE_OPTS: -Dorg.gradle.daemon=false
+        run: gradle :app:assembleRelease --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: octopus-watch
